@@ -1,18 +1,9 @@
-name: Build and deploy Python project to Azure Function App - resume-filter
-
-on:
-  push:
-    branches:
-      - main
-  workflow_dispatch:
-
-env:
-  AZURE_FUNCTIONAPP_PACKAGE_PATH: '.' # Change if your function code is in a subfolder
-  PYTHON_VERSION: '3.10' # Recommended for Azure Functions compatibility
-
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    permissions:
+      id-token: write  # ✅ REQUIRED for Azure OIDC login
+      contents: read
 
     steps:
       - name: Checkout repository
@@ -21,7 +12,7 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
-          python-version: ${{ env.PYTHON_VERSION }}
+          python-version: '3.10'
 
       - name: 'Login to Azure'
         uses: azure/login@v2
@@ -35,4 +26,4 @@ jobs:
         with:
           app-name: 'resume-filter'
           slot-name: 'Production'
-          package: ${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}
+          package: '.'
