@@ -4,7 +4,7 @@ import azure.functions as func
 from azure.core.credentials import AzureKeyCredential
 from azure.search.documents import SearchClient
 from azure.search.documents.indexes import SearchIndexClient
-from azure.search.documents.indexes.models import SearchIndex, SimpleField, edm
+from azure.search.documents.indexes.models import SearchIndex, SimpleField
 
 # Config
 search_service = "hiring-studio"
@@ -24,11 +24,11 @@ def ensure_match_index_exists():
         schema = SearchIndex(
             name=match_index,
             fields=[
-                SimpleField(name="id", type=edm.String, key=True),
-                SimpleField(name="jd_id", type=edm.String, filterable=True),
-                SimpleField(name="resume_id", type=edm.String, filterable=True),
-                SimpleField(name="score", type=edm.Double),
-                SimpleField(name="match_status", type=edm.String, filterable=True)
+                SimpleField(name="id", type="edm.String", key=True),
+                SimpleField(name="jd_id", type="edm.String", filterable=True),
+                SimpleField(name="resume_id", type="edm.String", filterable=True),
+                SimpleField(name="score", type="edm.Double"),
+                SimpleField(name="match_status", type="edm.String", filterable=True)
             ]
         )
         index_client.create_index(schema)
