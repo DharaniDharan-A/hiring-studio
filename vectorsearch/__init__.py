@@ -5,8 +5,8 @@ from azure.search.documents import SearchClient
 import azure.functions as func
 
 # Azure Cognitive Search credentials
-search_service = "hiringstudioaisearch"
-api_key = "COoATxUVpsSyaiRvYi0irVD9rgzAthCAbUlyocwxiKAzSeAOOEYz"
+search_service = "hiring-studio"
+api_key = "tXfLAUnRjeBONn3sDLZdKRu4EL64sew60Z3NRLlLRvAzSeAWV1FU"
 endpoint = f"https://{search_service}.search.windows.net"
 index_name = "resumes"
 
