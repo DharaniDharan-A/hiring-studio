@@ -24,11 +24,11 @@ def ensure_match_index_exists():
         schema = SearchIndex(
             name=match_index,
             fields=[
-                SimpleField(name="id", type="edm.String", key=True),
-                SimpleField(name="jd_id", type="edm.String", filterable=True),
-                SimpleField(name="resume_id", type="edm.String", filterable=True),
-                SimpleField(name="score", type="edm.Double"),
-                SimpleField(name="match_status", type="edm.String", filterable=True)
+                SimpleField(name="id", type="Edm.String", key=True),
+                SimpleField(name="jd_id", type="Edm.String", filterable=True),
+                SimpleField(name="resume_id", type="Edm.String", filterable=True),
+                SimpleField(name="score", type="Edm.Double"),
+                SimpleField(name="match_status", type="Edm.String", filterable=True)
             ]
         )
         index_client.create_index(schema)
