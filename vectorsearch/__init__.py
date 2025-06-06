@@ -46,7 +46,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
 
         # Fetch JD vector
         jd_doc = jd_client.get_document(key=jd_id)
-        jd_vector = jd_doc["jd_vector"]
+        jd_vector = jd_doc["content_vector"]
 
         # Run vector search on resume index
         results = resume_client.search(
