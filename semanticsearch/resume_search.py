@@ -1,6 +1,7 @@
 from azure.core.credentials import AzureKeyCredential
 from azure.search.documents import SearchClient
 from dotenv import load_dotenv
+import os
 
 load_dotenv()
 
