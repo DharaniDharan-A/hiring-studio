@@ -1,91 +1,49 @@
 import json
 import logging
-from azure.core.credentials import AzureKeyCredential
-from azure.search.documents import SearchClient
-from azure.search.documents.indexes import SearchIndexClient
-from azure.search.documents.indexes.models import SearchIndex, SimpleField
 import azure.functions as func
-
-# Azure Search settings
-search_service = "hiring-studio"
-api_key = "tXfLAUnRjeBONn3sDLZdKRu4EL64sew60Z3NRLlLRvAzSeAWV1FU"
-endpoint = f"https://{search_service}.search.windows.net"
-resume_index = "resumes"
-jd_index = "job-descriptions"
-result_index = "match-results"
-
-credential = AzureKeyCredential(api_key)
-resume_client = SearchClient(endpoint, resume_index, credential)
-jd_client = SearchClient(endpoint, jd_index, credential)
-result_client = SearchClient(endpoint, result_index, credential)
-index_client = SearchIndexClient(endpoint, credential)
-
-def create_result_index_if_not_exists():
-    try:
-        index_client.get_index(result_index)
-    except:
-        fields = [
-            SimpleField(name="id", type="Edm.String", key=True),
-            SimpleField(name="jd_id", type="Edm.String", filterable=True),
-            SimpleField(name="resume_id", type="Edm.String", filterable=True),
-            SimpleField(name="score", type="Edm.Double"),
-            SimpleField(name="match_status", type="Edm.String", filterable=True)
-        ]
-        index = SearchIndex(name=result_index, fields=fields)
-        index_client.create_index(index)
+from . import resume_search
 
 def main(req: func.HttpRequest) -> func.HttpResponse:
     try:
+        # Parse the input JSON
         body = req.get_json()
+
         jd_id = body.get("jd_id")
-        val1 = float(body.get("val1"))  # threshold for matched
-        val2 = float(body.get("val2"))  # threshold for partially matched
+        val1 = body.get("val1")
+        val2 = body.get("val2")
 
-        if not jd_id or val1 is None or val2 is None:
-            return func.HttpResponse("jd_id, val1, and val2 are required", status_code=400)
+        # Validate input
+        if jd_id is None or val1 is None or val2 is None:
+            return func.HttpResponse(
+                json.dumps({"error": "jd_id, val1, and val2 are required"}),
+                mimetype="application/json",
+                status_code=400
+            )
 
-        # Fetch JD vector
-        jd_doc = jd_client.get_document(key=jd_id)
-        jd_vector = jd_doc["content_vector"]
+        # Convert threshold values to float
+        try:
+            val1 = float(val1)
+            val2 = float(val2)
+        except ValueError:
+            return func.HttpResponse(
+                json.dumps({"error": "val1 and val2 must be numeric"}),
+                mimetype="application/json",
+                status_code=400
+            )
 
-        # Run vector search on resume index
-        results = resume_client.search(
-            search_text=None,
-            vector_queries=[{
-                "kind": "vector",
-                "vector": jd_vector,
-                "fields": "resume_vector",
-                "k": 50
-            }]
+        # Perform matching and store results
+        resume_search.match_and_store_results(jd_id, val1, val2)
+
+        return func.HttpResponse(
+            json.dumps({"message": "Matching results stored."}),
+            mimetype="application/json",
+            status_code=200
         )
-
-        # Create index if not exists
-        create_result_index_if_not_exists()
-
-        # Store matches
-        actions = []
-        for result in results:
-            score = result["@search.score"]
-            status = "not matched"
-            if score >= val1:
-                status = "matched"
-            elif score >= val2:
-                status = "partially matched"
-
-            record = {
-                "id": f"{jd_id}_{result['id']}",
-                "jd_id": jd_id,
-                "resume_id": result["id"],
-                "score": score,
-                "match_status": status
-            }
-            actions.append(record)
-
-        if actions:
-            result_client.upload_documents(documents=actions)
-
-        return func.HttpResponse("Matching results stored.", status_code=200)
 
     except Exception as e:
         logging.exception("Error during vector matching")
-        return func.HttpResponse(f"Error: {str(e)}", status_code=500)
+        return func.HttpResponse(
+            json.dumps({"error": str(e)}),
+            mimetype="application/json",
+            status_code=500
+        )

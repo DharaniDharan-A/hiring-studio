@@ -1,3 +1,4 @@
 azure-functions
 azure-search-documents==11.4.0
 azure-core
+python-dotenv
