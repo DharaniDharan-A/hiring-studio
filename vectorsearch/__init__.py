@@ -1,89 +1,91 @@
 import json
 import logging
-import azure.functions as func
 from azure.core.credentials import AzureKeyCredential
 from azure.search.documents import SearchClient
 from azure.search.documents.indexes import SearchIndexClient
 from azure.search.documents.indexes.models import SearchIndex, SimpleField
+import azure.functions as func
 
-# Config
+# Azure Search settings
 search_service = "hiring-studio"
 api_key = "tXfLAUnRjeBONn3sDLZdKRu4EL64sew60Z3NRLlLRvAzSeAWV1FU"
 endpoint = f"https://{search_service}.search.windows.net"
-resumes_index = "resumes"
+resume_index = "resumes"
 jd_index = "job-descriptions"
-match_index = "jd-resume-matches"
+result_index = "match-results"
 
 credential = AzureKeyCredential(api_key)
-search_client = SearchClient(endpoint, resumes_index, credential)
+resume_client = SearchClient(endpoint, resume_index, credential)
 jd_client = SearchClient(endpoint, jd_index, credential)
+result_client = SearchClient(endpoint, result_index, credential)
 index_client = SearchIndexClient(endpoint, credential)
 
-def ensure_match_index_exists():
-    if match_index not in [i.name for i in index_client.list_indexes()]:
-        schema = SearchIndex(
-            name=match_index,
-            fields=[
-                SimpleField(name="id", type="Edm.String", key=True),
-                SimpleField(name="jd_id", type="Edm.String", filterable=True),
-                SimpleField(name="resume_id", type="Edm.String", filterable=True),
-                SimpleField(name="score", type="Edm.Double"),
-                SimpleField(name="match_status", type="Edm.String", filterable=True)
-            ]
-        )
-        index_client.create_index(schema)
+def create_result_index_if_not_exists():
+    try:
+        index_client.get_index(result_index)
+    except:
+        fields = [
+            SimpleField(name="id", type="Edm.String", key=True),
+            SimpleField(name="jd_id", type="Edm.String", filterable=True),
+            SimpleField(name="resume_id", type="Edm.String", filterable=True),
+            SimpleField(name="score", type="Edm.Double"),
+            SimpleField(name="match_status", type="Edm.String", filterable=True)
+        ]
+        index = SearchIndex(name=result_index, fields=fields)
+        index_client.create_index(index)
 
 def main(req: func.HttpRequest) -> func.HttpResponse:
     try:
-        # Parse query params
-        jd_id = req.params.get("jd_id")
-        val1 = float(req.params.get("val1", 0.85))  # matched threshold
-        val2 = float(req.params.get("val2", 0.65))  # partially matched threshold
+        body = req.get_json()
+        jd_id = body.get("jd_id")
+        val1 = float(body.get("val1"))  # threshold for matched
+        val2 = float(body.get("val2"))  # threshold for partially matched
 
-        if not jd_id:
-            return func.HttpResponse("Missing jd_id in query parameters", status_code=400)
+        if not jd_id or val1 is None or val2 is None:
+            return func.HttpResponse("jd_id, val1, and val2 are required", status_code=400)
 
-        # Get JD vector from JD index
-        jd_doc = next(jd_client.search(search_text=None, filter=f"id eq '{jd_id}'"))
-        jd_vector = jd_doc["content_vector"]
+        # Fetch JD vector
+        jd_doc = jd_client.get_document(key=jd_id)
+        jd_vector = jd_doc["jd_vector"]
 
-        # Vector search resumes
-        results = search_client.search(
+        # Run vector search on resume index
+        results = resume_client.search(
             search_text=None,
             vector_queries=[{
                 "kind": "vector",
                 "vector": jd_vector,
                 "fields": "resume_vector",
-                "k": 20
+                "k": 50
             }]
         )
 
-        # Ensure output index exists
-        ensure_match_index_exists()
-        match_upload_client = SearchClient(endpoint, match_index, credential)
+        # Create index if not exists
+        create_result_index_if_not_exists()
 
-        to_upload = []
-        for res in results:
-            score = res["@search.score"]
-            status = (
-                "matched" if score >= val1 else
-                "partially_matched" if score >= val2 else
-                "not_matched"
-            )
+        # Store matches
+        actions = []
+        for result in results:
+            score = result["@search.score"]
+            status = "not matched"
+            if score >= val1:
+                status = "matched"
+            elif score >= val2:
+                status = "partially matched"
 
-            to_upload.append({
-                "id": f"{jd_id}_{res['id']}",
+            record = {
+                "id": f"{jd_id}_{result['id']}",
                 "jd_id": jd_id,
-                "resume_id": res["id"],
+                "resume_id": result["id"],
                 "score": score,
                 "match_status": status
-            })
+            }
+            actions.append(record)
 
-        if to_upload:
-            match_upload_client.upload_documents(documents=to_upload)
+        if actions:
+            result_client.upload_documents(documents=actions)
 
-        return func.HttpResponse("Matching complete and results stored.", status_code=200)
+        return func.HttpResponse("Matching results stored.", status_code=200)
 
     except Exception as e:
-        logging.exception("Error in JD to Resume match process")
+        logging.exception("Error during vector matching")
         return func.HttpResponse(f"Error: {str(e)}", status_code=500)
